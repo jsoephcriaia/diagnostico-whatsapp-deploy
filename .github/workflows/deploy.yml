@@ -1,0 +1,61 @@
+name: Deploy to Hostinger (FTP)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout deploy repo
+        uses: actions/checkout@v4
+
+      - name: Checkout source repo (AI Studio)
+        uses: actions/checkout@v4
+        with:
+          repository: jsoephcriaia/diagnostico-whatsapp
+          path: source
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install deps
+        working-directory: source
+        run: npm install
+
+      - name: Build
+        working-directory: source
+        run: npm run build
+
+      - name: Patch dist/index.html
+        run: |
+          sed -i 's|<link rel="stylesheet" href="/index.css">||g' source/dist/index.html || true
+          sed -i 's|src="/assets/|src="./assets/|g' source/dist/index.html || true
+          sed -i 's|href="/assets/|href="./assets/|g' source/dist/index.html || true
+
+      - name: Add .htaccess for SPA routing
+        run: |
+          cat > source/dist/.htaccess << 'EOF'
+          <IfModule mod_rewrite.c>
+          RewriteEngine On
+          RewriteCond %{REQUEST_FILENAME} -f [OR]
+          RewriteCond %{REQUEST_FILENAME} -d
+          RewriteRule ^ - [L]
+          RewriteRule ^ index.html [L]
+          </IfModule>
+          EOF
+
+      - name: Deploy to Hostinger via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_HOST }}
+          username: ${{ secrets.FTP_USER }}
+          password: ${{ secrets.FTP_PASS }}
+          local-dir: source/dist/
+          server-dir: public_html/
+          dangerous-clean-slate: true
